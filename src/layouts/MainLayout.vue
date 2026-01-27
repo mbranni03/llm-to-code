@@ -2,14 +2,14 @@
   <div class="layout">
     <LessonSidebar :is-open="isSidebarOpen" @close="isSidebarOpen = false" />
 
-    <header class="header">
+    <header class="header" :class="{ 'header-transparent': isHomePage }">
       <div class="header-content">
-        <a href="/" class="logo-area">
+        <router-link to="/" class="logo-area">
           <div class="logo-icon-wrapper">
             <span class="material-icons logo-icon">code</span>
           </div>
           <h1 class="logo-text">Learned<span class="highlight">.</span></h1>
-        </a>
+        </router-link>
         <div class="spacer"></div>
         <nav class="nav-actions">
           <div class="user-avatar">
@@ -26,7 +26,8 @@
 </template>
 
 <script>
-import { defineComponent } from 'vue'
+import { defineComponent, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import LessonSidebar from 'components/LessonSidebar.vue'
 import { storeToRefs } from 'pinia'
 import { useLessonStore } from '../stores/store'
@@ -39,8 +40,13 @@ export default defineComponent({
   setup() {
     const lessonStore = useLessonStore()
     const { isSidebarOpen } = storeToRefs(lessonStore)
+    const route = useRoute()
+
+    const isHomePage = computed(() => route.path === '/')
+
     return {
       isSidebarOpen,
+      isHomePage,
     }
   },
 })
@@ -75,6 +81,15 @@ export default defineComponent({
   top: 0;
   z-index: 1000;
   transition: all 0.3s ease;
+  width: 100%;
+}
+
+.header.header-transparent {
+  position: absolute;
+  background-color: transparent;
+  border-bottom: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .header-content {

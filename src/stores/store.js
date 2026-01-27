@@ -150,6 +150,41 @@ export const useLessonStore = defineStore('lesson', {
     lessons: MOCK_LESSONS,
     currentLessonId: '2',
     isSidebarOpen: false,
+    userProfile: {
+      name: 'User',
+      level: 5,
+      xp: 1250,
+      totalTime: '12h 30m',
+      languages: [
+        {
+          id: 'rust',
+          name: 'Rust',
+          description: 'Systems programming with safety and speed.',
+          color: '#dea584',
+          icon: 'fab fa-rust',
+          comingSoon: false,
+          disabled: false,
+        },
+        {
+          id: 'python',
+          name: 'Python',
+          description: 'Great for data science and rapid prototyping.',
+          color: '#3572A5',
+          icon: 'fab fa-python',
+          comingSoon: true,
+          disabled: true,
+        },
+        {
+          id: 'javascript',
+          name: 'JavaScript',
+          description: 'The language of the web.',
+          color: '#f1e05a',
+          icon: 'fab fa-square-js',
+          comingSoon: true,
+          disabled: true,
+        },
+      ],
+    },
   }),
 
   getters: {
