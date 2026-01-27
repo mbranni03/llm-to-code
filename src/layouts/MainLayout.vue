@@ -28,7 +28,8 @@
 <script>
 import { defineComponent } from 'vue'
 import LessonSidebar from 'components/LessonSidebar.vue'
-import { useLessons } from '../composables/useLessons'
+import { storeToRefs } from 'pinia'
+import { useLessonStore } from '../stores/store'
 
 export default defineComponent({
   name: 'MainLayout',
@@ -36,7 +37,8 @@ export default defineComponent({
     LessonSidebar,
   },
   setup() {
-    const { isSidebarOpen } = useLessons()
+    const lessonStore = useLessonStore()
+    const { isSidebarOpen } = storeToRefs(lessonStore)
     return {
       isSidebarOpen,
     }

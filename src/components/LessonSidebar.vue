@@ -45,7 +45,8 @@
 
 <script>
 import { defineComponent } from 'vue'
-import { useLessons } from '../composables/useLessons'
+import { storeToRefs } from 'pinia'
+import { useLessonStore } from '../stores/store'
 
 export default defineComponent({
   name: 'LessonSidebar',
@@ -57,7 +58,9 @@ export default defineComponent({
   },
   emits: ['close'],
   setup() {
-    const { lessons, currentLessonId, setCurrentLesson } = useLessons()
+    const lessonStore = useLessonStore()
+    const { lessons, currentLessonId } = storeToRefs(lessonStore)
+    const { setCurrentLesson } = lessonStore
 
     const selectLesson = (lesson) => {
       if (!lesson.isLocked) {

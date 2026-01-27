@@ -29,9 +29,17 @@
     <div class="pane right-pane">
       <!-- Editor Toolbar -->
       <div class="editor-header">
-        <div class="file-info">
-          <span class="material-icons file-icon">description</span>
-          <span class="file-name">src/main.rs</span>
+        <div class="file-tabs" v-if="currentLesson && currentLesson.files">
+          <button
+            v-for="(file, index) in currentLesson.files"
+            :key="index"
+            class="file-tab"
+            :class="{ 'is-active': activeFileIndex === index }"
+            @click="activeFileIndex = index"
+          >
+            <span class="material-icons file-icon">description</span>
+            <span class="file-name">{{ file.name }}</span>
+          </button>
         </div>
         <div class="editor-actions">
           <button
@@ -87,7 +95,8 @@
 </template>
 
 <script>
-import { defineComponent, onMounted, ref, computed, watch } from 'vue'
+import { defineComponent, onMounted, ref, computed, watch, shallowRef } from 'vue'
+import { storeToRefs } from 'pinia'
 import MarkdownIt from 'markdown-it'
 import { EditorState } from '@codemirror/state'
 import {
@@ -115,7 +124,7 @@ import {
 import { lintKeymap } from '@codemirror/lint'
 import { oneDark } from '@codemirror/theme-one-dark'
 import ProgressTracker from 'components/ProgressTracker.vue'
-import { useLessons } from '../composables/useLessons'
+import { useLessonStore } from '../stores/store'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/atom-one-dark.css'
 
@@ -126,8 +135,20 @@ export default defineComponent({
   },
   setup() {
     const editorRef = ref(null)
-    const { currentLesson, currentLessonIndex, lessons, nextLesson, prevLesson, isSidebarOpen } =
-      useLessons()
+    const editorView = shallowRef(null)
+    const activeFileIndex = ref(0)
+
+    const lessonStore = useLessonStore()
+    const { currentLesson, currentLessonIndex, lessons, isSidebarOpen, currentStep, totalSteps } =
+      storeToRefs(lessonStore)
+    const { nextLesson, prevLesson, toggleSidebar } = lessonStore
+
+    const activeFile = computed(() => {
+      if (currentLesson.value && currentLesson.value.files) {
+        return currentLesson.value.files[activeFileIndex.value] || currentLesson.value.files[0]
+      }
+      return null
+    })
 
     // State
     const isRunning = ref(false)
@@ -135,10 +156,6 @@ export default defineComponent({
     const showOutput = ref(true)
     const output = ref('')
     const consoleExpanded = ref(false)
-
-    // Computed props map to store
-    const currentStep = computed(() => currentLessonIndex.value + 1)
-    const totalSteps = computed(() => lessons.value.length)
     const moduleName = ref('Rust Fundamentals')
 
     const md = new MarkdownIt({
@@ -198,17 +215,31 @@ export default defineComponent({
       }, 1500)
     }
 
+    watch(activeFile, (newFile) => {
+      if (!editorView.value || !newFile) return
+      const currentDoc = editorView.value.state.doc.toString()
+      if (currentDoc !== newFile.code) {
+        editorView.value.dispatch({
+          changes: { from: 0, to: editorView.value.state.doc.length, insert: newFile.code },
+        })
+      }
+    })
+
+    watch(currentLesson, () => {
+      activeFileIndex.value = 0
+    })
+
     onMounted(() => {
       if (!editorRef.value) return
 
       const startState = EditorState.create({
-        doc: `fn main() {
-    // Write your code here
-    let mut counter = 0;
-    counter += 1;
-    println!("Counter is: {}", counter);
-}`,
+        doc: activeFile.value ? activeFile.value.code : '',
         extensions: [
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged && activeFile.value) {
+              activeFile.value.code = update.state.doc.toString()
+            }
+          }),
           oneDark,
           lineNumbers(),
           highlightActiveLineGutter(),
@@ -250,7 +281,7 @@ export default defineComponent({
         ],
       })
 
-      new EditorView({
+      editorView.value = new EditorView({
         state: startState,
         parent: editorRef.value,
       })
@@ -258,6 +289,7 @@ export default defineComponent({
 
     return {
       editorRef,
+      activeFileIndex,
       renderedMarkdown,
       isRunning,
       isSubmitting,
@@ -266,12 +298,14 @@ export default defineComponent({
       runCode,
       submitWork,
       consoleExpanded,
+      currentLesson,
       currentStep,
       totalSteps,
       moduleName,
       nextLesson,
       prevLesson,
       isSidebarOpen,
+      toggleSidebar,
       isFirst: computed(() => currentLessonIndex.value === 0),
       isLast: computed(() => currentLessonIndex.value === lessons.value.length - 1),
     }
@@ -536,21 +570,45 @@ export default defineComponent({
   border-bottom: 1px solid #1d1d1d;
 }
 
-.file-info {
+.file-tabs {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
+  overflow-x: auto;
+}
+
+.file-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: transparent;
+  border: none;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: #78909c; /* blue-grey-4 */
+  border-radius: 4px;
+  font-size: 0.75rem;
+  transition: all 0.2s ease;
+  margin-right: 2px;
+}
+
+.file-tab:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #b0bec5;
+}
+
+.file-tab.is-active {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #e0e0e0;
 }
 
 .file-icon {
-  color: #78909c; /* blue-grey-4 */
   font-size: 1rem;
+  opacity: 0.8;
 }
 
 .file-name {
-  color: #b0bec5; /* blue-grey-3 */
   font-family: 'Fira Code', monospace;
-  font-size: 0.75rem;
 }
 
 /* Editor Area */
