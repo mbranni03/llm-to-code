@@ -191,17 +191,22 @@ export async function getAllConcepts() {
  * Get or generate a lesson for a concept
  * @param {string} conceptId
  * @param {string} [model]
+ * @param {string} [userId]
  * @returns {Promise<{ lesson: GeneratedLesson, cached: boolean }>}
  */
-export async function getLesson(conceptId, model) {
-  const params = model ? `?model=${encodeURIComponent(model)}` : ''
-  return apiRequest(`/lesson/${conceptId}${params}`)
+export async function getLesson(conceptId, model, userId) {
+  const params = new URLSearchParams()
+  if (model) params.append('model', model)
+  if (userId) params.append('userId', userId)
+
+  const queryString = params.toString() ? `?${params.toString()}` : ''
+  return apiRequest(`/lesson/${conceptId}${queryString}`)
 }
 
 /**
  * Force regenerate a lesson
  * @param {string} conceptId
- * @param {{ model?: string, force?: boolean }} [options]
+ * @param {{ model?: string, force?: boolean, userId?: string }} [options]
  * @returns {Promise<{ lesson: GeneratedLesson, regenerated: boolean }>}
  */
 export async function regenerateLesson(conceptId, options = {}) {
@@ -211,6 +216,7 @@ export async function regenerateLesson(conceptId, options = {}) {
       conceptId,
       model: options.model,
       force: options.force ?? true,
+      userId: options.userId,
     }),
   })
 }
@@ -245,7 +251,21 @@ export async function updateMastery(request) {
 /**
  * Submit code for comprehensive evaluation
  * @param {{ userId: string, conceptId: string, code: string }} request
- * @returns {Promise<import('../types/lesson').SubmissionResponse>}
+ * @typedef {Object} SubmitResponse
+ * @property {boolean} passed
+ * @property {Object} analysis
+ * @property {string} analysis.feedback
+ * @property {string[]} [analysis.hintsForNextAttempt]
+ * @property {Object} masteryUpdate
+ * @property {boolean} masteryUpdate.mastered
+ * @property {number} masteryUpdate.newScore
+ * @property {number} masteryUpdate.previousScore
+ * @property {Object|null} [nextConcept]
+ * @property {string} nextConcept.id
+ * @property {string} nextConcept.label
+ * @property {string} nextConcept.category
+ * @property {number} nextConcept.complexity
+ * @returns {Promise<SubmitResponse>}
  */
 export async function submit(request) {
   return apiRequest('/submit', {

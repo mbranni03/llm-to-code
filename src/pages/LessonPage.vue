@@ -12,7 +12,7 @@
         <div class="header-top-row">
           <div class="module-info">
             <span class="module-overline">Module: {{ moduleName }}</span>
-            <span class="step-indicator">Part {{ currentStep }} of {{ totalSteps }}</span>
+            <span class="step-indicator">Lesson {{ currentStep }}</span>
           </div>
           <button
             class="btn-map-toggle"
@@ -24,8 +24,6 @@
             <span class="btn-label">Path</span>
           </button>
         </div>
-
-        <ProgressTracker :current="currentStep" :total="totalSteps" />
       </div>
 
       <!-- Error state -->
@@ -95,7 +93,7 @@
       </div>
 
       <!-- Output Console -->
-      <div v-if="showOutput" class="console-pane" :class="{ 'is-expanded': consoleExpanded }">
+      <div class="console-pane" :class="{ 'is-expanded': consoleExpanded }">
         <div class="console-header">
           <div class="console-status">
             <span class="console-title">Terminal Output</span>
@@ -111,9 +109,6 @@
               <span class="material-icons">{{
                 consoleExpanded ? 'expand_more' : 'expand_less'
               }}</span>
-            </button>
-            <button class="btn-icon-only" @click="showOutput = false">
-              <span class="material-icons">close</span>
             </button>
           </div>
         </div>
@@ -169,8 +164,12 @@
 
             <!-- Next Lesson Action -->
             <div v-if="lastSubmission.passed" class="actions-row">
-              <button class="btn btn-primary" @click="nextLesson">
-                Next Lesson <span class="material-icons">arrow_forward</span>
+              <button class="btn btn-primary" @click="handleNextLesson">
+                <span v-if="lastSubmission.nextConcept"
+                  >Continue to {{ lastSubmission.nextConcept.label }}</span
+                >
+                <span v-else>Next Lesson</span>
+                <span class="material-icons">arrow_forward</span>
               </button>
             </div>
 
@@ -231,7 +230,6 @@ import {
 } from '@codemirror/autocomplete'
 import { lintKeymap } from '@codemirror/lint'
 import { oneDark } from '@codemirror/theme-one-dark'
-import ProgressTracker from 'components/ProgressTracker.vue'
 import AIAssistant from 'components/AIAssistant.vue'
 import LoadingOverlay from 'components/LoadingOverlay.vue'
 import { useLessonStore } from '../stores/store'
@@ -241,7 +239,6 @@ import 'highlight.js/styles/atom-one-dark.css'
 export default defineComponent({
   name: 'LessonPage',
   components: {
-    ProgressTracker,
     AIAssistant,
     LoadingOverlay,
   },
@@ -257,7 +254,6 @@ export default defineComponent({
       lessons,
       isSidebarOpen,
       currentStep,
-      totalSteps,
       isGeneratingLesson,
       lessonError,
       isBackendOnline,
@@ -275,7 +271,16 @@ export default defineComponent({
       compileCode,
       submitCode,
       setEditorCode,
+      setCurrentLesson,
     } = lessonStore
+
+    const handleNextLesson = async () => {
+      if (lastSubmission.value?.nextConcept) {
+        await setCurrentLesson(lastSubmission.value.nextConcept.id)
+      } else {
+        await nextLesson()
+      }
+    }
 
     const activeFile = computed(() => {
       if (currentLesson.value && currentLesson.value.files) {
@@ -321,6 +326,7 @@ export default defineComponent({
     watch(currentLesson, (newLesson) => {
       output.value = ''
       showOutput.value = true
+      consoleExpanded.value = false
       if (newLesson?.files) {
         const mainIndex = newLesson.files.findIndex((f) => f.name.endsWith('main.rs'))
         activeFileIndex.value = mainIndex >= 0 ? mainIndex : 0
@@ -513,9 +519,9 @@ export default defineComponent({
       consoleExpanded,
       currentLesson,
       currentStep,
-      totalSteps,
       moduleName,
       nextLesson,
+      handleNextLesson,
       prevLesson,
       isSidebarOpen,
       toggleSidebar,
@@ -726,6 +732,8 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   gap: 2px;
+  border-left: 3px solid #3b82f6;
+  padding-left: 16px;
 }
 
 .module-overline {

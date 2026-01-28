@@ -210,7 +210,7 @@ export const useLessonStore = defineStore('lesson', {
         this.currentLessonId = response.lesson.id
 
         // Fetch full lesson content
-        const lessonResponse = await LearningAPI.getLesson(response.lesson.id)
+        const lessonResponse = await LearningAPI.getLesson(response.lesson.id, null, this.userId)
 
         this.currentLessonData = lessonResponse.lesson
 
@@ -224,6 +224,7 @@ export const useLessonStore = defineStore('lesson', {
         }
         this.attempts = 0
         this.compileResult = null
+        this.lastSubmission = null
       } catch (error) {
         this.handleApiError(error)
       } finally {
@@ -242,7 +243,7 @@ export const useLessonStore = defineStore('lesson', {
         const concept = await LearningAPI.getConcept(conceptId)
 
         // Get/generate lesson
-        const lessonResponse = await LearningAPI.getLesson(conceptId)
+        const lessonResponse = await LearningAPI.getLesson(conceptId, null, this.userId)
 
         this.currentConcept = { ...concept, current_score: 0 }
         this.currentLessonId = conceptId
@@ -258,6 +259,7 @@ export const useLessonStore = defineStore('lesson', {
         }
         this.attempts = 0
         this.compileResult = null
+        this.lastSubmission = null
       } catch (error) {
         this.handleApiError(error)
       } finally {
