@@ -16,7 +16,7 @@
     />
 
     <!-- Left Pane: Instructions (Standard Lesson) -->
-    <div class="pane left-pane" v-else>
+    <div class="pane left-pane" ref="leftPane" v-else>
       <div class="pane-header">
         <div class="header-top-row">
           <div class="module-info">
@@ -215,7 +215,7 @@
 </template>
 
 <script>
-import { defineComponent, onMounted, ref, computed, watch, shallowRef } from 'vue'
+import { defineComponent, onMounted, ref, computed, watch, shallowRef, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import MarkdownIt from 'markdown-it'
@@ -260,6 +260,7 @@ export default defineComponent({
   },
   setup() {
     const editorRef = ref(null)
+    const leftPane = ref(null)
     const editorView = shallowRef(null)
     const activeFileIndex = ref(0)
 
@@ -310,10 +311,8 @@ export default defineComponent({
       if (currentLessonData) {
         if (currentLessonData.isIntro) {
           lessonStore.markLessonCompleted(currentLessonData.id)
-          await nextLesson()
-        } else {
-          await loadNextLesson(currentLessonData.id)
         }
+        await loadNextLesson(currentLessonData.id)
 
         // Update URL to match new lesson
         if (currentLesson.value?.lessonId) {
@@ -403,6 +402,13 @@ export default defineComponent({
       } else {
         activeFileIndex.value = 0
       }
+
+      // Scroll instructions to top when lesson changes
+      nextTick(() => {
+        if (leftPane.value) {
+          leftPane.value.scrollTop = 0
+        }
+      })
     })
 
     watch(compileResult, (result) => {
@@ -554,6 +560,7 @@ export default defineComponent({
 
     return {
       editorRef,
+      leftPane,
       activeFileIndex,
       renderedMarkdown,
       isRunning,
