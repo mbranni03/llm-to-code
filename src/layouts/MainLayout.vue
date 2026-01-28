@@ -24,6 +24,8 @@
     <main class="page-container">
       <router-view />
     </main>
+
+    <LoadingOverlay v-model="showSystemUpdate" />
   </div>
 </template>
 
@@ -32,6 +34,7 @@ import { defineComponent, computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import LessonSidebar from 'components/LessonSidebar.vue'
 import UserProfileCard from 'components/UserProfileCard.vue'
+import LoadingOverlay from 'components/LoadingOverlay.vue'
 import { storeToRefs } from 'pinia'
 import { useLessonStore } from '../stores/store'
 
@@ -40,10 +43,11 @@ export default defineComponent({
   components: {
     LessonSidebar,
     UserProfileCard,
+    LoadingOverlay,
   },
   setup() {
     const lessonStore = useLessonStore()
-    const { isSidebarOpen } = storeToRefs(lessonStore)
+    const { isSidebarOpen, showSystemUpdate } = storeToRefs(lessonStore)
     const route = useRoute()
     const isProfileOpen = ref(false)
 
@@ -57,6 +61,7 @@ export default defineComponent({
       isSidebarOpen,
       isHomePage,
       isProfileOpen,
+      showSystemUpdate,
       toggleProfile,
     }
   },

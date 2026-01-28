@@ -1,5 +1,11 @@
 <template>
   <div class="split-layout">
+    <!-- Loading Overlay for lesson generation -->
+    <LoadingOverlay
+      :model-value="isGeneratingLesson"
+      :status-message="isBackendOnline ? 'GENERATING' : 'OFFLINE'"
+    />
+
     <!-- Left Pane: Instructions -->
     <div class="pane left-pane">
       <div class="pane-header">
@@ -22,7 +28,25 @@
         <ProgressTracker :current="currentStep" :total="totalSteps" />
       </div>
 
-      <div v-html="renderedMarkdown" class="markdown-body col-grow"></div>
+      <!-- Error state -->
+      <div v-if="lessonError" class="error-state">
+        <span class="material-icons error-icon">error_outline</span>
+        <h3>{{ isBackendOnline ? 'Error Loading Lesson' : 'Backend Offline' }}</h3>
+        <p>{{ lessonError }}</p>
+        <button class="btn btn-retry" @click="retryLoad">
+          <span class="material-icons">refresh</span>
+          Retry
+        </button>
+      </div>
+
+      <!-- Lesson content -->
+      <div v-else-if="currentLesson" v-html="renderedMarkdown" class="markdown-body col-grow"></div>
+
+      <!-- Loading placeholder -->
+      <div v-else class="loading-placeholder">
+        <span class="material-icons rotating">hourglass_empty</span>
+        <p>Loading lesson content...</p>
+      </div>
     </div>
 
     <!-- Right Pane: Code Editor & Console -->
@@ -46,7 +70,7 @@
             class="btn btn-run"
             :class="{ 'is-loading': isRunning }"
             @click="runCode"
-            :disabled="isRunning"
+            :disabled="isRunning || !isBackendOnline"
           >
             <span v-if="isRunning" class="spinner"></span>
             <span v-else class="material-icons btn-icon">play_arrow</span>
@@ -56,7 +80,7 @@
             class="btn btn-submit"
             :class="{ 'is-loading': isSubmitting }"
             @click="submitWork"
-            :disabled="isRunning || isSubmitting"
+            :disabled="isRunning || isSubmitting || !isBackendOnline"
           >
             <span v-if="isSubmitting" class="spinner"></span>
             <span v-else class="material-icons btn-icon">check</span>
@@ -73,7 +97,15 @@
       <!-- Output Console -->
       <div v-if="showOutput" class="console-pane" :class="{ 'is-expanded': consoleExpanded }">
         <div class="console-header">
-          <span class="console-title">Terminal Output</span>
+          <div class="console-status">
+            <span class="console-title">Terminal Output</span>
+            <span
+              v-if="compileResult"
+              :class="['status-badge', compileResult.success ? 'success' : 'error']"
+            >
+              {{ compileResult.success ? '✓ Success' : '✗ Error' }}
+            </span>
+          </div>
           <div class="console-actions">
             <button class="btn-icon-only" @click="consoleExpanded = !consoleExpanded">
               <span class="material-icons">{{
@@ -86,11 +118,18 @@
           </div>
         </div>
         <div class="console-content">
-          <div v-if="output" class="output-text">{{ output }}</div>
+          <div
+            v-if="output"
+            class="output-text"
+            :class="{ 'has-error': compileResult && !compileResult.success }"
+          >
+            {{ output }}
+          </div>
           <div v-else class="output-placeholder">Waiting for output...</div>
         </div>
       </div>
     </div>
+    <AIAssistant />
   </div>
 </template>
 
@@ -124,6 +163,8 @@ import {
 import { lintKeymap } from '@codemirror/lint'
 import { oneDark } from '@codemirror/theme-one-dark'
 import ProgressTracker from 'components/ProgressTracker.vue'
+import AIAssistant from 'components/AIAssistant.vue'
+import LoadingOverlay from 'components/LoadingOverlay.vue'
 import { useLessonStore } from '../stores/store'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/atom-one-dark.css'
@@ -132,6 +173,8 @@ export default defineComponent({
   name: 'LessonPage',
   components: {
     ProgressTracker,
+    AIAssistant,
+    LoadingOverlay,
   },
   setup() {
     const editorRef = ref(null)
@@ -139,9 +182,29 @@ export default defineComponent({
     const activeFileIndex = ref(0)
 
     const lessonStore = useLessonStore()
-    const { currentLesson, currentLessonIndex, lessons, isSidebarOpen, currentStep, totalSteps } =
-      storeToRefs(lessonStore)
-    const { nextLesson, prevLesson, toggleSidebar } = lessonStore
+    const {
+      currentLesson,
+      currentLessonIndex,
+      lessons,
+      isSidebarOpen,
+      currentStep,
+      totalSteps,
+      isGeneratingLesson,
+      lessonError,
+      isBackendOnline,
+      isCompiling,
+      compileResult,
+      editorCode,
+    } = storeToRefs(lessonStore)
+    const {
+      nextLesson,
+      prevLesson,
+      toggleSidebar,
+      initialize,
+      compileCode,
+      submitLesson,
+      setEditorCode,
+    } = lessonStore
 
     const activeFile = computed(() => {
       if (currentLesson.value && currentLesson.value.files) {
@@ -151,12 +214,12 @@ export default defineComponent({
     })
 
     // State
-    const isRunning = ref(false)
+    const isRunning = computed(() => isCompiling.value)
     const isSubmitting = ref(false)
     const showOutput = ref(true)
     const output = ref('')
     const consoleExpanded = ref(false)
-    const moduleName = ref('Rust Fundamentals')
+    const moduleName = computed(() => currentLesson.value?.category || 'Rust Fundamentals')
 
     const md = new MarkdownIt({
       html: true,
@@ -178,43 +241,111 @@ export default defineComponent({
       },
     })
 
-    const renderedMarkdown = computed(() => md.render(currentLesson.value.content || ''))
-
-    // Watch for lesson changes to reset output/state if needed
-    watch(currentLesson, () => {
-      output.value = ''
-      showOutput.value = true
+    const renderedMarkdown = computed(() => {
+      if (!currentLesson.value?.content) return ''
+      return md.render(currentLesson.value.content)
     })
 
-    // Mock Run Function
-    const runCode = () => {
-      isRunning.value = true
-      showOutput.value = true
+    // Watch for lesson changes
+    watch(currentLesson, (newLesson) => {
       output.value = ''
+      showOutput.value = true
+      if (newLesson?.files) {
+        const mainIndex = newLesson.files.findIndex((f) => f.name.endsWith('main.rs'))
+        activeFileIndex.value = mainIndex >= 0 ? mainIndex : 0
+      } else {
+        activeFileIndex.value = 0
+      }
+    })
 
-      // Simulate compilation delay
-      setTimeout(() => {
-        isRunning.value = false
-        output.value = `> Compiling playground v0.0.1 (/playground)\n> Finished dev [unoptimized + debuginfo] target(s) in 0.45s\n> Running \`target/debug/playground\`\n\nHello, world!\nCounter is: 1`
-      }, 1000)
+    // Watch for compile results
+    watch(compileResult, (result) => {
+      if (result) {
+        let outputText = ''
+
+        // Prioritize runOutput (actual program output) if available
+        if (result.runOutput) {
+          if (result.runOutput.stdout) {
+            outputText += result.runOutput.stdout
+          }
+          if (result.runOutput.stderr) {
+            if (outputText) outputText += '\n'
+            outputText += result.runOutput.stderr
+          }
+
+          // If runOutput is empty but we have compilation stderr, show it
+          if (!outputText && result.stderr) {
+            outputText = result.stderr
+          }
+        } else {
+          // Standard output handling for non-WASM/simple compiles
+          if (result.stdout) {
+            outputText += result.stdout
+          }
+          if (result.stderr) {
+            if (outputText) outputText += '\n'
+            outputText += result.stderr
+          }
+        }
+
+        // Final fallback if no output at all
+        if (!outputText) {
+          const isSuccess = result.success ?? result.exitCode === 0
+          outputText = isSuccess
+            ? '> Program executed successfully (no output)'
+            : `> Execution failed with exit code ${result.exitCode ?? 1}`
+        }
+
+        output.value = outputText
+        showOutput.value = true
+      }
+    })
+
+    // Run code via API
+    const runCode = async () => {
+      showOutput.value = true
+      output.value = '> Compiling...'
+
+      await compileCode()
     }
 
-    const submitWork = () => {
+    // Submit work and update mastery
+    const submitWork = async () => {
       isSubmitting.value = true
       showOutput.value = true
-      output.value = ''
 
-      setTimeout(() => {
+      try {
+        // First run/compile to check if it works
+        const result = await compileCode()
+
+        // Extract error code if compilation failed
+        let errorCode
+        if (!result.success && result.stderr) {
+          const errorMatch = result.stderr.match(/error\[E(\d+)\]/)
+          errorCode = errorMatch ? `E${errorMatch[1]}` : undefined
+        }
+
+        // Submit mastery update
+        const masteryResult = await submitLesson(result.success, errorCode)
+
+        if (masteryResult.mastered) {
+          output.value += "\n\n🎉 Congratulations! You've mastered this concept!"
+        } else if (result.success) {
+          output.value += `\n\n✓ Good job! Mastery: ${Math.round(masteryResult.newScore * 100)}%`
+        }
+      } catch (error) {
+        output.value = `> Error: ${error.message}`
+      } finally {
         isSubmitting.value = false
-        output.value = `> Running tests...\n> test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n\n> Submission successful!`
-
-        // Advance to next lesson after a brief delay if successful
-        setTimeout(() => {
-          nextLesson()
-        }, 1500)
-      }, 1500)
+      }
     }
 
+    // Retry loading
+    const retryLoad = () => {
+      initialize()
+    }
+
+    // Sync editor content with store
     watch(activeFile, (newFile) => {
       if (!editorView.value || !newFile) return
       const currentDoc = editorView.value.state.doc.toString()
@@ -225,19 +356,27 @@ export default defineComponent({
       }
     })
 
-    watch(currentLesson, () => {
-      activeFileIndex.value = 0
-    })
+    // Initialize on mount
+    onMounted(async () => {
+      // Initialize store (loads lessons from API)
+      await initialize()
 
-    onMounted(() => {
       if (!editorRef.value) return
 
+      const initialCode = activeFile.value?.code || editorCode.value || ''
+
       const startState = EditorState.create({
-        doc: activeFile.value ? activeFile.value.code : '',
+        doc: initialCode,
         extensions: [
           EditorView.updateListener.of((update) => {
-            if (update.docChanged && activeFile.value) {
-              activeFile.value.code = update.state.doc.toString()
+            if (update.docChanged) {
+              const newCode = update.state.doc.toString()
+              // Update store
+              setEditorCode(newCode)
+              // Also update the file object for compatibility
+              if (activeFile.value) {
+                activeFile.value.code = newCode
+              }
             }
           }),
           oneDark,
@@ -297,6 +436,7 @@ export default defineComponent({
       output,
       runCode,
       submitWork,
+      retryLoad,
       consoleExpanded,
       currentLesson,
       currentStep,
@@ -306,6 +446,10 @@ export default defineComponent({
       prevLesson,
       isSidebarOpen,
       toggleSidebar,
+      isGeneratingLesson,
+      lessonError,
+      isBackendOnline,
+      compileResult,
       isFirst: computed(() => currentLessonIndex.value === 0),
       isLast: computed(() => currentLessonIndex.value === lessons.value.length - 1),
     }
@@ -317,9 +461,9 @@ export default defineComponent({
 /* Layout */
 .split-layout {
   display: flex;
-  flex-direction: row; /* Explicitly set to row */
-  flex-wrap: nowrap; /* prevent wrapping */
-  flex-grow: 1; /* fill parent vertical space */
+  flex-direction: row;
+  flex-wrap: nowrap;
+  flex-grow: 1;
   width: 100%;
   overflow: hidden;
   background-color: #000;
@@ -331,22 +475,121 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   position: relative;
-  min-width: 0; /* allows flex item to shrink below content size if needed */
-  box-sizing: border-box; /* Crucial for padding handling */
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .left-pane {
-  background-color: #121212; /* grey-10 */
-  color: #bdbdbd; /* grey-4 */
-  padding: 24px;
+  background-color: #121212;
+  color: #bdbdbd;
+  padding: 0;
   overflow-y: auto;
   border-right: 1px solid #1d1d1d;
-  width: 50%; /* fixed split for now */
+  width: 50%;
 }
 
 .right-pane {
   background-color: #000;
   width: 50%;
+}
+
+/* Error State */
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  text-align: center;
+  padding: 24px;
+}
+
+.error-icon {
+  font-size: 4rem;
+  color: #ef4444;
+  margin-bottom: 1rem;
+}
+
+.error-state h3 {
+  color: #fff;
+  margin-bottom: 0.5rem;
+}
+
+.error-state p {
+  color: #9ca3af;
+  margin-bottom: 1.5rem;
+  max-width: 400px;
+}
+
+.btn-retry {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-retry:hover {
+  background-color: rgba(59, 130, 246, 0.3);
+}
+
+/* Loading Placeholder */
+.loading-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: #6b7280;
+  padding: 24px;
+}
+
+.rotating {
+  animation: rotate 2s linear infinite;
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Console Status */
+.console-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-badge {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.status-badge.success {
+  background-color: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.status-badge.error {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.output-text.has-error {
+  color: #fca5a5;
 }
 
 /* Utilities */
@@ -361,7 +604,7 @@ export default defineComponent({
   position: sticky;
   top: 0;
   z-index: 10;
-  padding-bottom: 12px;
+  padding: 24px 24px 12px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -382,14 +625,14 @@ export default defineComponent({
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #71717a; /* zinc-500 */
+  color: #71717a;
   font-weight: 600;
 }
 
 .step-indicator {
   font-family: 'Fira Code', monospace;
   font-size: 0.85rem;
-  color: #e4e4e7; /* zinc-200 */
+  color: #e4e4e7;
 }
 
 .btn-map-toggle {
@@ -450,7 +693,7 @@ export default defineComponent({
 }
 
 .btn-flat {
-  color: #757575; /* grey-6 */
+  color: #757575;
 }
 .btn-flat:hover {
   background-color: rgba(255, 255, 255, 0.05);
@@ -465,7 +708,7 @@ export default defineComponent({
 }
 
 .btn-run {
-  background-color: #2e7d32; /* green-8 */
+  background-color: #2e7d32;
   color: white;
   border-radius: 16px;
   padding: 4px 12px;
@@ -482,7 +725,7 @@ export default defineComponent({
 
 .btn-submit {
   background-color: rgba(59, 130, 246, 0.1);
-  color: #60a5fa; /* blue-400 */
+  color: #60a5fa;
   border-radius: 16px;
   padding: 0 16px;
   height: 28px;
@@ -496,7 +739,7 @@ export default defineComponent({
 .btn-submit:hover {
   background-color: rgba(59, 130, 246, 0.2);
   border-color: rgba(59, 130, 246, 0.5);
-  color: #93c5fd; /* blue-300 */
+  color: #93c5fd;
 }
 
 .btn-submit:active {
@@ -585,7 +828,7 @@ export default defineComponent({
   border: none;
   padding: 6px 10px;
   cursor: pointer;
-  color: #78909c; /* blue-grey-4 */
+  color: #78909c;
   border-radius: 4px;
   font-size: 0.75rem;
   transition: all 0.2s ease;
@@ -647,11 +890,11 @@ export default defineComponent({
 }
 
 .console-title {
-  font-size: 0.625rem; /* overline */
+  font-size: 0.625rem;
   text-transform: uppercase;
   letter-spacing: 0.16667em;
   font-weight: 500;
-  color: #9e9e9e; /* grey-5 */
+  color: #9e9e9e;
 }
 
 .console-actions {
@@ -670,80 +913,16 @@ export default defineComponent({
 }
 
 .output-text {
-  color: #eeeeee; /* grey-3 */
+  color: #eeeeee;
   white-space: pre-wrap;
 }
 
 .output-placeholder {
-  color: #616161; /* grey-7 */
+  color: #616161;
   font-style: italic;
 }
-
-/* Markdown Styles (Same as before but refined) */
+/* Markdown Content Layout */
 .markdown-body {
-  font-family:
-    'Inter',
-    system-ui,
-    -apple-system,
-    sans-serif;
-  line-height: 1.6;
-}
-
-.markdown-body :deep(h1) {
-  font-size: 1.75rem;
-  font-weight: 700;
-  margin-bottom: 1.5rem;
-  color: #fff;
-}
-
-.markdown-body :deep(h3) {
-  font-size: 1.1rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 2rem;
-  margin-bottom: 0.75rem;
-  color: #79c0ff;
-}
-
-.markdown-body :deep(p) {
-  margin-bottom: 1.2rem;
-  color: #bbb;
-}
-
-.markdown-body :deep(li) {
-  margin-bottom: 0.5rem;
-  color: #bbb;
-}
-
-.markdown-body :deep(code) {
-  background-color: #2d2d2d;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  font-family: 'Fira Code', monospace;
-  font-size: 0.9em;
-  color: #a5d6ff;
-}
-
-.markdown-body :deep(pre) {
-  background-color: #161616;
-  padding: 1rem;
-  border-radius: 8px;
-  overflow-x: auto;
-  border: 1px solid #333;
-  margin-bottom: 1.5rem;
-}
-
-.markdown-body :deep(pre code) {
-  background-color: transparent;
-  padding: 0;
-  color: #e6edf3;
-  font-size: 0.9rem;
-}
-
-/* Syntax Highlighting Theme Overrides */
-.markdown-body :deep(.hljs) {
-  background: transparent; /* Use container background */
-  padding: 0; /* Let pre handle padding */
+  padding: 0 24px 24px 24px;
 }
 </style>

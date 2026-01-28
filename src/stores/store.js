@@ -1,155 +1,68 @@
 import { defineStore, acceptHMRUpdate } from 'pinia'
+import * as LearningAPI from '../services/LearningAPI'
 
-// Mock Data
-const MOCK_LESSONS = [
-  {
-    id: '1',
-    title: 'Variables & Mutability',
-    description: 'Learn how to declare and modify variables in Rust.',
-    isCompleted: true,
-    isLocked: false,
-    content: `
-# Rust Basics: Variables
+// Fallback mock lesson for offline mode
+const FALLBACK_LESSON = {
+  id: 'offline',
+  title: 'Offline Mode',
+  description: 'Backend is not available',
+  isCompleted: false,
+  isLocked: false,
+  content: `
+# Backend Unavailable
 
-In Rust, variables are **immutable** by default. This is one of the many nudges Rust gives you to write code that takes advantage of the safety and easy concurrency that Rust offers.
+The learning server is not running. Please start the backend server to load lessons.
 
-### The Task
-1. Declare a mutable variable named \`counter\`.
-2. Set it to \`0\`.
-3. Increment it by \`1\`.
-4. Print the result.
-
-\`\`\`rust
-fn main() {
-    // Your code here
-}
+\`\`\`bash
+# Start the backend server
+bun run /learn
 \`\`\`
-
-### Hints
-- Use the \`mut\` keyword to make a variable mutable.
-- Remember to use semi-colons \`;\` at the end of statements.
-    `,
-    files: [
-      {
-        name: 'src/main.rs',
-        language: 'rust',
-        code: `fn main() {
-    // Write your code here
-    let mut counter = 0;
-    counter += 1;
-    println!("Counter is: {}", counter);
-}`,
-      },
-    ],
-  },
-  {
-    id: '2',
-    title: 'Data Types',
-    description: 'Understand scalar and compound types.',
-    isCompleted: false,
-    isLocked: false, // current
-    content: `
-# Data Types
-
-Rust is a strictly typed language. Let's explore integers, floats, and booleans.
-
-### The Task
-1. Create a variable \`x\` of type \`i32\`.
-2. Create a variable \`y\` of type \`f64\`.
-3. Print them.
-    `,
-    files: [
-      {
-        name: 'src/main.rs',
-        language: 'rust',
-        code: `fn main() {
-    // Create variables here
-    let x: i32 = 5;
-    let y: f64 = 3.14;
-    println!("x: {}, y: {}", x, y);
+  `,
+  files: [
+    {
+      name: 'src/main.rs',
+      language: 'rust',
+      code: `fn main() {\n    println!("Hello, world!");\n}`,
+    },
+  ],
 }
-`,
-      },
-      {
-        name: 'src/types.rs',
-        language: 'rust',
-        code: `// This is a helper file for types
-// You can define structs or enums here
-pub struct Point {
-    x: i32,
-    y: i32,
-}
-`,
-      },
-    ],
-  },
-  {
-    id: '3',
-    title: 'Functions',
-    description: 'How to define and call functions.',
-    isCompleted: false,
-    isLocked: true,
-    files: [
-      {
-        name: 'src/main.rs',
-        language: 'rust',
-        code: `fn main() {
-    greet();
-}
-
-fn greet() {
-    println!("Hello from a function!");
-}`,
-      },
-    ],
-  },
-  {
-    id: '4',
-    title: 'Control Flow',
-    description: 'If statements and loops.',
-    isCompleted: false,
-    isLocked: true,
-    files: [
-      {
-        name: 'src/main.rs',
-        language: 'rust',
-        code: `fn main() {
-    let number = 3;
-    if number < 5 {
-        println!("condition was true");
-    } else {
-        println!("condition was false");
-    }
-}`,
-      },
-    ],
-  },
-  {
-    id: '5',
-    title: 'Ownership',
-    description: 'Deep dive into Rust unique ownership model.',
-    isCompleted: false,
-    isLocked: true,
-    files: [
-      {
-        name: 'src/main.rs',
-        language: 'rust',
-        code: `fn main() {
-    let s1 = String::from("hello");
-    let s2 = s1;
-    // println!("{}, world!", s1); // This would error!
-    println!("{}, world!", s2);
-}`,
-      },
-    ],
-  },
-]
 
 export const useLessonStore = defineStore('lesson', {
   state: () => ({
-    lessons: MOCK_LESSONS,
-    currentLessonId: '2',
+    // User identity
+    userId: 'default_user',
+
+    // Current lesson (API-driven or fallback)
+    currentLessonId: null,
+    currentLessonData: null, // GeneratedLesson from API
+    currentConcept: null, // FrontierConcept from API
+
+    // Loading states
+    isLoadingLesson: false,
+    isGeneratingLesson: false,
+    lessonError: null,
+    isBackendOnline: true,
+
+    // Frontier (available lessons)
+    frontier: [],
+    lessons: [], // For backward compatibility with sidebar
+
+    // Progress stats
+    progress: null,
+
+    // Compilation
+    isCompiling: false,
+    compileResult: null,
+    attempts: 0,
+
+    // Editor code
+    editorCode: '',
+
+    // UI State
     isSidebarOpen: false,
+    showSystemUpdate: false,
+
+    // User profile (static for now, could be API-driven later)
     userProfile: {
       name: 'User',
       level: 5,
@@ -188,49 +101,293 @@ export const useLessonStore = defineStore('lesson', {
   }),
 
   getters: {
-    currentLessonIndex: (state) => state.lessons.findIndex((l) => l.id === state.currentLessonId),
-    currentLesson: (state) =>
-      state.lessons.find((l) => l.id === state.currentLessonId) || state.lessons[0],
-    totalSteps: (state) => state.lessons.length,
-    currentStep: (state) => {
-      const index = state.lessons.findIndex((l) => l.id === state.currentLessonId)
-      return index + 1
+    // Current lesson object (compatible with existing UI)
+    currentLesson(state) {
+      if (!state.isBackendOnline) {
+        return FALLBACK_LESSON
+      }
+
+      if (!state.currentLessonData) {
+        return null
+      }
+
+      // Transform API lesson to UI-compatible format
+      return {
+        id: state.currentLessonData.conceptId,
+        title: state.currentLessonData.title,
+        description: state.currentConcept?.label || '',
+        content: state.currentLessonData.markdown,
+        isCompleted: (state.currentConcept?.current_score || 0) >= 0.8,
+        isLocked: false,
+        files: state.currentLessonData.verificationTask?.starterFiles?.map((f) => ({
+          name: f.path,
+          language: f.path.endsWith('.rs') ? 'rust' : 'text',
+          code: f.content,
+        })) || [
+          {
+            name: 'src/main.rs',
+            language: 'rust',
+            code: extractStarterCode(state.currentLessonData.markdown),
+          },
+        ],
+        verificationTask: state.currentLessonData.verificationTask,
+        complexity: state.currentConcept?.complexity || 1,
+        category: state.currentConcept?.category || 'Basics',
+      }
     },
-    isFirstLesson: (state) => {
-      const index = state.lessons.findIndex((l) => l.id === state.currentLessonId)
-      return index === 0
+
+    currentLessonIndex(state) {
+      if (!state.currentConcept || state.frontier.length === 0) return 0
+      const idx = state.frontier.findIndex((c) => c.id === state.currentConcept.id)
+      return idx >= 0 ? idx : 0
     },
-    isLastLesson: (state) => {
-      const index = state.lessons.findIndex((l) => l.id === state.currentLessonId)
-      return index === state.lessons.length - 1
+
+    totalSteps(state) {
+      return state.frontier.length || 1
+    },
+
+    currentStep() {
+      return this.currentLessonIndex + 1
+    },
+
+    isFirstLesson() {
+      return this.currentLessonIndex === 0
+    },
+
+    isLastLesson(state) {
+      return this.currentLessonIndex === state.frontier.length - 1
+    },
+
+    masteryPercent(state) {
+      return state.progress ? Math.round(state.progress.averageMastery * 100) : 0
     },
   },
 
   actions: {
-    nextLesson() {
-      const currentIndex = this.currentLessonIndex
-      if (currentIndex < this.lessons.length - 1) {
-        // Mark current as completed
-        this.lessons[currentIndex].isCompleted = true
+    // =====================================================
+    // INITIALIZATION
+    // =====================================================
 
-        const nextIndex = currentIndex + 1
-        this.lessons[nextIndex].isLocked = false
-        this.currentLessonId = this.lessons[nextIndex].id
+    async initialize() {
+      this.isBackendOnline = await LearningAPI.isBackendAvailable()
+
+      if (this.isBackendOnline) {
+        await Promise.all([this.loadFrontier(), this.loadProgress()])
+
+        // Load first available lesson
+        if (this.frontier.length > 0) {
+          await this.loadNextLesson()
+        }
+      } else {
+        this.lessonError = 'Backend server is not running'
       }
     },
 
-    prevLesson() {
+    // =====================================================
+    // LESSON LOADING (API-driven)
+    // =====================================================
+
+    async loadNextLesson(category) {
+      this.isLoadingLesson = true
+      this.isGeneratingLesson = true
+      this.lessonError = null
+
+      try {
+        const response = await LearningAPI.getNextLesson(this.userId, category)
+
+        if (!response.lesson) {
+          this.lessonError = response.message || 'No lessons available'
+          this.currentConcept = null
+          this.currentLessonData = null
+          return
+        }
+
+        this.currentConcept = response.lesson
+        this.currentLessonId = response.lesson.id
+
+        // Fetch full lesson content
+        const lessonResponse = await LearningAPI.getLesson(response.lesson.id)
+
+        this.currentLessonData = lessonResponse.lesson
+
+        // Load starter code from verification task or markdown
+        const starterFiles = lessonResponse.lesson.verificationTask?.starterFiles
+        if (starterFiles && starterFiles.length > 0) {
+          const mainFile = starterFiles.find((f) => f.path.endsWith('main.rs')) || starterFiles[0]
+          this.editorCode = mainFile.content
+        } else {
+          this.editorCode = extractStarterCode(lessonResponse.lesson.markdown)
+        }
+        this.attempts = 0
+        this.compileResult = null
+      } catch (error) {
+        this.handleApiError(error)
+      } finally {
+        this.isLoadingLesson = false
+        this.isGeneratingLesson = false
+      }
+    },
+
+    async loadLesson(conceptId) {
+      this.isLoadingLesson = true
+      this.isGeneratingLesson = true
+      this.lessonError = null
+
+      try {
+        // Get concept details
+        const concept = await LearningAPI.getConcept(conceptId)
+
+        // Get/generate lesson
+        const lessonResponse = await LearningAPI.getLesson(conceptId)
+
+        this.currentConcept = { ...concept, current_score: 0 }
+        this.currentLessonId = conceptId
+        this.currentLessonData = lessonResponse.lesson
+
+        // Load starter code from verification task or markdown
+        const starterFiles = lessonResponse.lesson.verificationTask?.starterFiles
+        if (starterFiles && starterFiles.length > 0) {
+          const mainFile = starterFiles.find((f) => f.path.endsWith('main.rs')) || starterFiles[0]
+          this.editorCode = mainFile.content
+        } else {
+          this.editorCode = extractStarterCode(lessonResponse.lesson.markdown)
+        }
+        this.attempts = 0
+        this.compileResult = null
+      } catch (error) {
+        this.handleApiError(error)
+      } finally {
+        this.isLoadingLesson = false
+        this.isGeneratingLesson = false
+      }
+    },
+
+    // =====================================================
+    // FRONTIER & PROGRESS
+    // =====================================================
+
+    async loadFrontier() {
+      try {
+        this.frontier = await LearningAPI.getFrontier(this.userId)
+
+        // Also populate lessons array for sidebar compatibility
+        this.lessons = this.frontier.map((concept) => ({
+          id: concept.id,
+          title: concept.label,
+          description: concept.category || '',
+          isCompleted: concept.current_score >= 0.8,
+          isLocked: false,
+        }))
+      } catch (error) {
+        console.error('Failed to load frontier:', error)
+      }
+    },
+
+    async loadProgress() {
+      try {
+        this.progress = await LearningAPI.getProgress(this.userId)
+      } catch (error) {
+        console.error('Failed to load progress:', error)
+      }
+    },
+
+    // =====================================================
+    // COMPILATION
+    // =====================================================
+
+    async compileCode() {
+      this.isCompiling = true
+      this.attempts++
+
+      try {
+        const result = await LearningAPI.compile({
+          language: 'rust',
+          code: this.editorCode,
+        })
+
+        // Normalize result
+        if (result.success === undefined) {
+          result.success = result.exitCode === 0
+        }
+
+        this.compileResult = result
+        return result
+      } catch (error) {
+        this.compileResult = {
+          success: false,
+          stdout: '',
+          stderr: error.message,
+          exitCode: 1,
+        }
+        return this.compileResult
+      } finally {
+        this.isCompiling = false
+      }
+    },
+
+    // =====================================================
+    // MASTERY & SUBMISSION
+    // =====================================================
+
+    async submitLesson(success, errorCode) {
+      if (!this.currentConcept) {
+        throw new Error('No current concept')
+      }
+
+      try {
+        const result = await LearningAPI.updateMastery({
+          userId: this.userId,
+          conceptId: this.currentConcept.id,
+          success,
+          attempts: this.attempts,
+          errorCode,
+        })
+
+        // Refresh data
+        await Promise.all([this.loadProgress(), this.loadFrontier()])
+
+        // Auto-advance if mastered
+        if (result.mastered) {
+          await this.loadNextLesson()
+        }
+
+        return result
+      } catch (error) {
+        console.error('Failed to update mastery:', error)
+        throw error
+      }
+    },
+
+    // =====================================================
+    // NAVIGATION (backward compatibility)
+    // =====================================================
+
+    async nextLesson() {
+      const currentIndex = this.currentLessonIndex
+      if (currentIndex < this.frontier.length - 1) {
+        const nextConcept = this.frontier[currentIndex + 1]
+        await this.loadLesson(nextConcept.id)
+      }
+    },
+
+    async prevLesson() {
       const currentIndex = this.currentLessonIndex
       if (currentIndex > 0) {
-        this.currentLessonId = this.lessons[currentIndex - 1].id
+        const prevConcept = this.frontier[currentIndex - 1]
+        await this.loadLesson(prevConcept.id)
       }
     },
 
-    setCurrentLesson(id) {
-      const lesson = this.lessons.find((l) => l.id === id)
-      if (lesson && !lesson.isLocked) {
-        this.currentLessonId = id
-      }
+    async setCurrentLesson(id) {
+      await this.loadLesson(id)
+    },
+
+    // =====================================================
+    // UI ACTIONS
+    // =====================================================
+
+    setEditorCode(code) {
+      this.editorCode = code
     },
 
     toggleSidebar() {
@@ -240,8 +397,52 @@ export const useLessonStore = defineStore('lesson', {
     setSidebarOpen(isOpen) {
       this.isSidebarOpen = isOpen
     },
+
+    triggerSystemUpdate() {
+      this.showSystemUpdate = true
+    },
+
+    // =====================================================
+    // ERROR HANDLING
+    // =====================================================
+
+    handleApiError(error) {
+      if (error.isOffline) {
+        this.isBackendOnline = false
+        this.lessonError = error.message
+      } else {
+        this.lessonError = error.message
+      }
+      console.error('API Error:', error)
+    },
   },
 })
+
+// =====================================================
+// HELPER FUNCTIONS
+// =====================================================
+
+/**
+ * Extract starter code from lesson markdown
+ * Looks for code blocks with `rust` language
+ */
+function extractStarterCode(markdown) {
+  if (!markdown) return 'fn main() {\n    // Start coding here\n}'
+
+  // Look for "Starting Code" section
+  const startingMatch = markdown.match(/\*\*Starting Code:\*\*\s*\n```rust\s*\n([\s\S]*?)\n```/i)
+  if (startingMatch?.[1]) {
+    return startingMatch[1].trim()
+  }
+
+  // Fallback: find the first rust code block
+  const codeMatch = markdown.match(/```rust\s*\n([\s\S]*?)\n```/)
+  if (codeMatch?.[1]) {
+    return codeMatch[1].trim()
+  }
+
+  return 'fn main() {\n    // Start coding here\n}'
+}
 
 if (import.meta.hot) {
   import.meta.hot.accept(acceptHMRUpdate(useLessonStore, import.meta.hot))
