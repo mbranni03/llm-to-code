@@ -22,11 +22,15 @@ const API_BASE = 'http://localhost:3000'
 
 /**
  * @typedef {Object} GeneratedLesson
+ * @property {string} lessonId
+ * @property {number} lessonNumber
  * @property {string} conceptId
  * @property {string} title
- * @property {string} markdown
- * @property {{ description: string, expectedOutput: string, validationCriteria: string[], starterFiles?: Array<{path: string, content: string}> }} verificationTask
+ * @property {string} [markdown]
+ * @property {{ description: string, expectedOutput: string, validationCriteria: string[], starterFiles?: Array<{path: string, content: string}> }} [verificationTask]
  * @property {string} generatedAt
+ * @property {boolean} [completed]
+ * @property {number} [mastery]
  */
 
 /**

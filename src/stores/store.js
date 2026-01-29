@@ -139,8 +139,9 @@ export const useLessonStore = defineStore('lesson', {
 
       // Transform API lesson to UI-compatible format
       return {
-        id: state.currentLessonData.conceptId,
+        id: state.currentLessonData.lessonId, // Use lessonId for unique identification
         lessonId: state.currentLessonData.lessonId,
+        conceptId: state.currentLessonData.conceptId,
         lessonNumber: state.currentLessonData.lessonNumber,
         title: state.currentLessonData.title,
         description: extractCategoryFromConceptId(state.currentLessonData.conceptId),
@@ -229,8 +230,9 @@ export const useLessonStore = defineStore('lesson', {
           return (a.lessonNumber || 0) - (b.lessonNumber || 0)
         })
         .map((lesson) => ({
-          id: lesson.conceptId,
+          id: lesson.lessonId, // Use lessonId for unique Vue keys
           lessonId: lesson.lessonId,
+          conceptId: lesson.conceptId,
           lessonNumber: lesson.lessonNumber,
           title: lesson.title,
           description: lesson.isIntro
@@ -240,6 +242,7 @@ export const useLessonStore = defineStore('lesson', {
           isLocked: false, // All generated lessons are available
           generatedAt: lesson.generatedAt,
           isIntro: !!lesson.isIntro,
+          mastery: lesson.mastery, // Pass through mastery if available
         }))
     },
   },
@@ -343,10 +346,10 @@ export const useLessonStore = defineStore('lesson', {
      * @param {Object} lessonData - The generated lesson data
      */
     addGeneratedLesson(lessonData) {
-      if (!lessonData?.conceptId) return
+      if (!lessonData?.lessonId) return
 
-      // Check if lesson already exists
-      const idx = this.generatedLessons.findIndex((l) => l.conceptId === lessonData.conceptId)
+      // Check if lesson already exists by lessonId (unique)
+      const idx = this.generatedLessons.findIndex((l) => l.lessonId === lessonData.lessonId)
 
       if (idx === -1) {
         // New lesson - add to list
@@ -437,9 +440,18 @@ export const useLessonStore = defineStore('lesson', {
       }
     },
 
-    async loadLesson(lessonId) {
+    async loadLesson(id) {
       // Check if full lesson is already in memory (has markdown content)
-      const existing = this.generatedLessons.find((l) => l.lessonId === lessonId)
+      // Try to find by lessonId first, then by conceptId
+      let existing = this.generatedLessons.find((l) => l.lessonId === id)
+      if (!existing) {
+        // Find most recent lesson for this concept if id is a conceptId
+        const conceptLessons = this.generatedLessons.filter((l) => l.conceptId === id)
+        if (conceptLessons.length > 0) {
+          existing = conceptLessons.sort((a, b) => (b.lessonNumber || 0) - (a.lessonNumber || 0))[0]
+        }
+      }
+
       const hasFullContent = existing?.markdown && existing.markdown.length > 0
 
       if (existing && hasFullContent) {
@@ -468,7 +480,7 @@ export const useLessonStore = defineStore('lesson', {
       this.lessonError = null
 
       try {
-        const lessonResponse = await LearningAPI.getLessonById(lessonId, this.userId)
+        const lessonResponse = await LearningAPI.getLessonById(id, this.userId)
 
         const lessonData = lessonResponse.lesson
         const lastCode = lessonResponse.lastCode
@@ -613,7 +625,7 @@ export const useLessonStore = defineStore('lesson', {
 
         // Mark as completed if passed and not an intro
         if (response.passed && !this.currentLesson?.isIntro) {
-          this.markLessonCompleted(this.currentLessonData.conceptId)
+          this.markLessonCompleted(this.currentLessonId)
         }
 
         // Sync attempt number if available
@@ -655,8 +667,8 @@ export const useLessonStore = defineStore('lesson', {
       }
     },
 
-    markLessonCompleted(conceptId) {
-      const lesson = this.generatedLessons.find((l) => l.conceptId === conceptId)
+    markLessonCompleted(lessonId) {
+      const lesson = this.generatedLessons.find((l) => l.lessonId === lessonId)
       if (lesson) {
         lesson.completed = true
       }

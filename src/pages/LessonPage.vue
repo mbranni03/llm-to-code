@@ -381,7 +381,7 @@ export default defineComponent({
         if (currentLessonData.isIntro) {
           lessonStore.markLessonCompleted(currentLessonData.id)
         }
-        await loadNextLesson(currentLessonData.id)
+        await loadNextLesson(currentLessonData.conceptId)
 
         // Update URL to match new lesson
         if (currentLesson.value?.lessonId) {
