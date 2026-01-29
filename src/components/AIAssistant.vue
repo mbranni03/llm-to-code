@@ -68,7 +68,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, nextTick } from 'vue'
+import { defineComponent, ref, nextTick, computed, watch } from 'vue'
 import { useLessonStore } from '../stores/store'
 import { askQuestion } from '../services/LearningAPI'
 import MarkdownIt from 'markdown-it'
@@ -85,12 +85,26 @@ export default defineComponent({
     const userInput = ref('')
     const isTyping = ref(false)
     const messagesRef = ref(null)
+    const currentLanguageName = computed(() => {
+      const lang = store.currentLanguage || 'rust'
+      if (lang.toLowerCase() === 'javascript') return 'JavaScript'
+      if (lang.toLowerCase() === 'typescript') return 'TypeScript'
+      return lang.charAt(0).toUpperCase() + lang.slice(1)
+    })
+
     const messages = ref([
       {
         role: 'assistant',
-        text: "Hi! I'm your AI Mentor. Stuck on the lesson? Ask me anything about Rust.",
+        text: `Hi! I'm your AI Mentor. Stuck on the lesson? Ask me anything about ${currentLanguageName.value}.`,
       },
     ])
+
+    // Update initial message if it's the only one and language changes
+    watch(currentLanguageName, (newName) => {
+      if (messages.value.length === 1 && messages.value[0].role === 'assistant') {
+        messages.value[0].text = `Hi! I'm your AI Mentor. Stuck on the lesson? Ask me anything about ${newName}.`
+      }
+    })
 
     // Markdown Configuration
     const md = new MarkdownIt({
@@ -146,6 +160,7 @@ export default defineComponent({
         const payload = {
           userId: store.userId,
           lessonId: store.currentLessonId || 'general',
+          language: store.currentLanguage,
           question: text,
           code: store.editorCode || '',
           lastOutput: store.compileResult?.stdout || store.compileResult?.stderr || '',

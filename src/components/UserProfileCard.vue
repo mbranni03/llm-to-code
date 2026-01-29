@@ -64,7 +64,9 @@ export default defineComponent({
     })
 
     const activeLanguages = computed(() => {
-      return userProfile.value.languages.filter((l) => !l.disabled)
+      return userProfile.value.languages.filter(
+        (l) => !l.disabled && store.shouldShowLanguageStats(l.id),
+      )
     })
 
     return {

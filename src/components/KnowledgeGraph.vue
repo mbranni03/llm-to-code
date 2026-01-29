@@ -114,9 +114,15 @@ export default defineComponent({
     const panStart = ref({ x: 0, y: 0 })
 
     const masteryPercent = computed(() => {
-      if (store.progress) {
-        return Math.round(store.progress.averageMastery * 100)
+      if (!store.shouldShowLanguageStats(store.currentLanguage)) {
+        return null
       }
+
+      const langStats = store.progress?.languages?.[store.currentLanguage]
+      if (langStats) {
+        return Math.round(langStats.averageMastery * 100)
+      }
+
       return null
     })
 

@@ -205,6 +205,18 @@ export const useLessonStore = defineStore('lesson', {
       return state.progress?.overallLevel || 1
     },
 
+    // Check if language stats should be shown based on progress
+    shouldShowLanguageStats: (state) => (langId) => {
+      const stats = state.progress?.languages?.[langId]
+      if (!stats) return false
+
+      // Don't show if total concepts equal notStarted OR if totalTime is 0
+      const hasStarted = stats.total !== stats.notStarted
+      const hasTimeSpent = stats.totalTime > 0
+
+      return hasStarted && hasTimeSpent
+    },
+
     // Lessons array for sidebar display
     // Transforms generatedLessons into a format compatible with LessonSidebar
     // Response fields: lessonId, lessonNumber, conceptId, title, markdown, verificationTask, generatedAt, completed
@@ -370,6 +382,26 @@ export const useLessonStore = defineStore('lesson', {
         }
 
         const lessonData = response.lesson
+        const lastCode = response.lastCode
+
+        // If lastCode exists, inject it into the starter files for this lesson
+        // This ensures the currentLesson getter and other UI components use the correct code
+        if (lastCode) {
+          if (!lessonData.verificationTask) lessonData.verificationTask = {}
+          if (!lessonData.verificationTask.starterFiles)
+            lessonData.verificationTask.starterFiles = []
+
+          const starterFiles = lessonData.verificationTask.starterFiles
+          if (starterFiles.length > 0) {
+            const mainFile = findMainFile(starterFiles, this.currentLanguage)
+            if (mainFile) mainFile.content = lastCode
+          } else {
+            starterFiles.push({
+              path: getMainFileName(this.currentLanguage),
+              content: lastCode,
+            })
+          }
+        }
 
         // Store both lessonId and conceptId
         this.currentLessonId = lessonData.lessonId
@@ -378,16 +410,21 @@ export const useLessonStore = defineStore('lesson', {
         // Add the new lesson to generated lessons list
         this.addGeneratedLesson(lessonData)
 
-        // Load starter code from verification task or markdown
-        const starterFiles = lessonData.verificationTask?.starterFiles
-        if (starterFiles && starterFiles.length > 0) {
-          const mainFile = findMainFile(starterFiles, this.currentLanguage)
-          this.editorCode = mainFile.content
-        } else if (!lessonData.isIntro) {
-          // Only extract code if it's not an intro
-          this.editorCode = extractStarterCode(lessonData.markdown, this.currentLanguage)
+        // Load code into editor (prioritize lastCode)
+        if (lastCode) {
+          this.editorCode = lastCode
         } else {
-          this.editorCode = ''
+          // Load starter code from verification task or markdown
+          const starterFiles = lessonData.verificationTask?.starterFiles
+          if (starterFiles && starterFiles.length > 0) {
+            const mainFile = findMainFile(starterFiles, this.currentLanguage)
+            this.editorCode = mainFile.content
+          } else if (!lessonData.isIntro) {
+            // Only extract code if it's not an intro
+            this.editorCode = extractStarterCode(lessonData.markdown, this.currentLanguage)
+          } else {
+            this.editorCode = ''
+          }
         }
         this.attempts = 0
         this.compileResult = null
@@ -434,21 +471,46 @@ export const useLessonStore = defineStore('lesson', {
         const lessonResponse = await LearningAPI.getLessonById(lessonId, this.userId)
 
         const lessonData = lessonResponse.lesson
+        const lastCode = lessonResponse.lastCode
+
+        // If lastCode exists, inject it into the starter files for this lesson
+        if (lastCode) {
+          if (!lessonData.verificationTask) lessonData.verificationTask = {}
+          if (!lessonData.verificationTask.starterFiles)
+            lessonData.verificationTask.starterFiles = []
+
+          const starterFiles = lessonData.verificationTask.starterFiles
+          if (starterFiles.length > 0) {
+            const mainFile = findMainFile(starterFiles, this.currentLanguage)
+            if (mainFile) mainFile.content = lastCode
+          } else {
+            starterFiles.push({
+              path: getMainFileName(this.currentLanguage),
+              content: lastCode,
+            })
+          }
+        }
+
         this.currentLessonId = lessonData.lessonId
         this.currentLessonData = lessonData
 
         // Update generated lessons list with full content
         this.addGeneratedLesson(lessonData)
 
-        // Load starter code from verification task or markdown
-        const starterFiles = lessonData.verificationTask?.starterFiles
-        if (starterFiles && starterFiles.length > 0) {
-          const mainFile = findMainFile(starterFiles, this.currentLanguage)
-          this.editorCode = mainFile.content
-        } else if (!lessonData.isIntro) {
-          this.editorCode = extractStarterCode(lessonData.markdown, this.currentLanguage)
+        // Load code into editor (prioritize lastCode)
+        if (lastCode) {
+          this.editorCode = lastCode
         } else {
-          this.editorCode = ''
+          // Load starter code from verification task or markdown
+          const starterFiles = lessonData.verificationTask?.starterFiles
+          if (starterFiles && starterFiles.length > 0) {
+            const mainFile = findMainFile(starterFiles, this.currentLanguage)
+            this.editorCode = mainFile.content
+          } else if (!lessonData.isIntro) {
+            this.editorCode = extractStarterCode(lessonData.markdown, this.currentLanguage)
+          } else {
+            this.editorCode = ''
+          }
         }
         this.attempts = 0
         this.compileResult = null
@@ -531,7 +593,7 @@ export const useLessonStore = defineStore('lesson', {
     // MASTERY & SUBMISSION
     // =====================================================
 
-    async submitCode(code, timeSpent = 0) {
+    async submitCode(code, timeSpent = 0, compiledResult = null) {
       if (!this.currentLessonData?.conceptId) return
 
       this.isSubmitting = true
@@ -541,6 +603,7 @@ export const useLessonStore = defineStore('lesson', {
           conceptId: this.currentLessonData.conceptId,
           code,
           timeSpent,
+          compiledResult,
         }
 
         const response = await LearningAPI.submit(payload)

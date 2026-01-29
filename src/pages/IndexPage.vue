@@ -59,7 +59,7 @@
               <div class="q-pa-lg flex-grow-1">
                 <!-- Language Stats Top Right -->
                 <div
-                  v-if="!lang.disabled && progress.languages?.[lang.id]"
+                  v-if="!lang.disabled && store.shouldShowLanguageStats(lang.id)"
                   class="absolute-top-right q-pa-md column items-end q-gutter-xs"
                 >
                   <div class="row items-center">
@@ -162,6 +162,7 @@ export default defineComponent({
     }
 
     return {
+      store,
       userProfile,
       overallLevel,
       completedLessonsCount,

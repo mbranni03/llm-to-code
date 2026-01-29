@@ -199,14 +199,69 @@
           </div>
 
           <!-- Standard Output Mode -->
-          <div
-            v-else-if="output"
-            class="output-text"
-            :class="{ 'has-error': compileResult && !compileResult.success }"
-          >
-            {{ output }}
+          <div v-else-if="showOutput" class="console-scroll-area" ref="consoleScrollRef">
+            <!-- Interactive Output -->
+            <div
+              v-if="outputMode === 'interactive'"
+              class="terminal-output"
+              :class="{
+                'is-empty': interactiveOutput.length === 0 && interactiveStatus === 'idle',
+              }"
+            >
+              <div
+                v-if="interactiveOutput.length === 0 && interactiveStatus === 'idle'"
+                class="terminal-placeholder"
+              >
+                <span class="material-icons placeholder-icon">terminal</span>
+                <p>Terminal ready</p>
+                <span class="placeholder-hint">Click "Run Code" to execute your program</span>
+              </div>
+
+              <div
+                v-for="(line, i) in interactiveOutput"
+                :key="i"
+                :class="['term-line', line.type]"
+              >
+                <span v-if="line.type === 'stdin'" class="prompt-char">$ </span>
+                <span>{{ formatOutput(line.data) }}</span>
+              </div>
+
+              <!-- Input Line -->
+              <div v-if="interactiveStatus === 'running'" class="input-line">
+                <span class="prompt-char">&gt; </span>
+                <input
+                  v-model="userInput"
+                  @keydown.enter="handleInput"
+                  type="text"
+                  class="terminal-input"
+                  placeholder="Type input..."
+                  autoFocus
+                />
+              </div>
+
+              <div v-if="interactiveStatus === 'exited'" class="process-status">
+                > Process exited
+              </div>
+            </div>
+
+            <!-- Legacy/Static Output -->
+            <div
+              v-else
+              class="output-text"
+              :class="{ 'has-error': compileResult && !compileResult.success, 'is-empty': !output }"
+            >
+              <div v-if="!output" class="terminal-placeholder">
+                <span class="material-icons placeholder-icon">description</span>
+                <p>No output yet</p>
+                <span class="placeholder-hint">Submit your code to see evaluation results</span>
+              </div>
+              {{ output }}
+            </div>
           </div>
-          <div v-else class="output-placeholder">Waiting for output...</div>
+          <div v-else class="terminal-placeholder">
+            <span class="material-icons placeholder-icon">hourglass_empty</span>
+            <p>Waiting for output...</p>
+          </div>
         </div>
       </div>
     </div>
@@ -249,6 +304,7 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import AIAssistant from 'components/AIAssistant.vue'
 import LoadingOverlay from 'components/LoadingOverlay.vue'
 import IntroPage from 'pages/IntroPage.vue'
+import { useInteractiveCompiler } from 'src/composables/useInteractiveCompiler'
 import { useLessonStore } from '../stores/store'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/atom-one-dark.css'
@@ -266,6 +322,17 @@ export default defineComponent({
     const editorView = shallowRef(null)
     const activeFileIndex = ref(0)
     const lessonStartTime = ref(Date.now())
+    const consoleScrollRef = ref(null)
+
+    // Interactive Compiler
+    const {
+      runCode: runInteractive,
+      sendInput,
+      kill,
+      output: interactiveOutput,
+      status: interactiveStatus,
+      exitCode,
+    } = useInteractiveCompiler('http://localhost:3000')
 
     const lessonStore = useLessonStore()
     const {
@@ -277,7 +344,6 @@ export default defineComponent({
       isGeneratingLesson,
       lessonError,
       isBackendOnline,
-      isCompiling,
       compileResult,
       editorCode,
       isSubmitting,
@@ -289,7 +355,6 @@ export default defineComponent({
       prevLesson,
       toggleSidebar,
       initialize,
-      compileCode,
       submitCode,
       setEditorCode,
       loadNextLesson,
@@ -331,9 +396,12 @@ export default defineComponent({
     // State
     // activeFileIndex is already defined at top of setup
     const showOutput = ref(true)
-    const output = ref('')
+    const legacyOutput = ref('')
+    const outputMode = ref('interactive') // 'interactive' | 'legacy'
+    const userInput = ref('')
     const consoleExpanded = ref(false)
     const hasCompiledSuccessfully = ref(false)
+    const codeRunning = ref('')
 
     // Computed
     const activeFile = computed(() => {
@@ -343,7 +411,6 @@ export default defineComponent({
       return null
     })
 
-    const isRunning = computed(() => isCompiling.value)
     const moduleName = computed(() => currentLesson.value?.category || 'Rust Fundamentals')
 
     // Markdown Configuration
@@ -371,32 +438,72 @@ export default defineComponent({
       return md.render(currentLesson.value.content)
     })
 
+    // Helper to strip ANSI codes for now
+    const formatOutput = (text) => {
+      // Simple ANSI stripper
+      return text.replace(
+        /* eslint-disable-next-line no-control-regex */
+        /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
+        '',
+      )
+    }
+
+    // Scroll to bottom of console
+    const scrollToBottom = () => {
+      nextTick(() => {
+        if (consoleScrollRef.value) {
+          consoleScrollRef.value.scrollTop = consoleScrollRef.value.scrollHeight
+        }
+      })
+    }
+
     // Actions
     const runCode = async () => {
       showOutput.value = true
-      output.value = '> Compiling...'
+      outputMode.value = 'interactive'
       lessonStore.$patch({ lastSubmission: null })
-      await compileCode()
+      consoleExpanded.value = true
+
+      const code = editorView.value ? editorView.value.state.doc.toString() : editorCode.value
+      codeRunning.value = code
+      runInteractive(currentLanguage.value, code)
+    }
+
+    const handleInput = () => {
+      if (!userInput.value) return
+      sendInput(userInput.value + '\n') // Add newline as standard terminal behavior
+      userInput.value = ''
     }
 
     const submitWork = async () => {
       showOutput.value = true
+      outputMode.value = 'legacy'
       lessonStore.$patch({ lastSubmission: null })
+      // Kill any running interactive process
+      if (interactiveStatus.value === 'running') {
+        kill()
+      }
+
       try {
         const code = editorView.value ? editorView.value.state.doc.toString() : editorCode.value
-        output.value = '> Submitting for evaluation...'
+        legacyOutput.value = '> Submitting for evaluation...'
 
         const now = Date.now()
         const timeSpent = now - lessonStartTime.value
 
-        await submitCode(code, timeSpent)
+        const compiledResult = {
+          terminal: [...interactiveOutput.value],
+          exitCode: exitCode.value ?? 0,
+        }
+
+        await submitCode(code, timeSpent, compiledResult)
 
         // Reset timer
         lessonStartTime.value = now
         showOutput.value = true
         consoleExpanded.value = true
       } catch (error) {
-        output.value = `> Error: ${error.message}`
+        legacyOutput.value = `> Error: ${error.message}`
       }
     }
 
@@ -407,10 +514,13 @@ export default defineComponent({
     // Watchers
     watch(currentLesson, (newLesson) => {
       lessonStartTime.value = Date.now()
-      output.value = ''
+      legacyOutput.value = ''
       showOutput.value = true
       consoleExpanded.value = false
       hasCompiledSuccessfully.value = false
+      // Kill process if running
+      if (interactiveStatus.value === 'running') kill()
+
       if (newLesson?.files) {
         // Find the main file based on current language
         const mainExtensions = {
@@ -434,6 +544,28 @@ export default defineComponent({
       })
     })
 
+    watch(interactiveOutput.value, () => {
+      scrollToBottom()
+      // If we got stdout/exit, assume it worked enough to enable submit?
+      // Or we can rely on exit code 0.
+    })
+
+    watch(interactiveStatus, (newStatus) => {
+      if (newStatus === 'exited') {
+        // Enable submit only if exit code is 0 (success)
+        // and the code that just ran is exactly what is currently in the editor
+        const currentCode = editorView.value
+          ? editorView.value.state.doc.toString()
+          : editorCode.value
+        if (exitCode.value === 0 && codeRunning.value === currentCode) {
+          hasCompiledSuccessfully.value = true
+        } else {
+          hasCompiledSuccessfully.value = false
+        }
+      }
+    })
+
+    // Legacy watcher for compileResult (if still used elsewhere)
     watch(compileResult, (result) => {
       if (result) {
         let outputText = ''
@@ -460,7 +592,8 @@ export default defineComponent({
             ? '> Program executed successfully (no output)'
             : `> Execution failed with exit code ${result.exitCode ?? 1}`
         }
-        output.value = outputText
+        legacyOutput.value = outputText
+        outputMode.value = 'legacy'
         showOutput.value = true
       }
     })
@@ -519,6 +652,8 @@ export default defineComponent({
               if (activeFile.value) {
                 activeFile.value.code = newCode
               }
+              // Reset compilation status when code changes
+              hasCompiledSuccessfully.value = false
             }
           }),
           oneDark,
@@ -618,10 +753,18 @@ export default defineComponent({
       leftPane,
       activeFileIndex,
       renderedMarkdown,
-      isRunning,
+      isRunning: computed(() => interactiveStatus.value === 'running'),
       isSubmitting,
       showOutput,
-      output,
+      output: legacyOutput,
+      interactiveOutput,
+      interactiveStatus,
+      userInput,
+      outputMode,
+      formatOutput,
+      consoleScrollRef,
+      handleInput,
+      kill,
       runCode,
       submitWork,
       retryLoad,
@@ -1291,6 +1434,8 @@ export default defineComponent({
   padding: 8px;
   font-family: 'Fira Code', monospace;
   font-size: 0.875rem;
+  display: flex;
+  flex-direction: column;
 }
 
 .output-text {
@@ -1302,8 +1447,115 @@ export default defineComponent({
   color: #616161;
   font-style: italic;
 }
+
+.terminal-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  color: #52525b;
+  text-align: center;
+}
+
+.terminal-output.is-empty,
+.output-text.is-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.placeholder-icon {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+  opacity: 0.3;
+}
+
+.terminal-placeholder p {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #71717a;
+}
+
+.placeholder-hint {
+  font-size: 0.75rem;
+  color: #3f3f46;
+  margin-top: 4px;
+}
 /* Markdown Content Layout */
 .markdown-body {
   padding: 0 24px 24px 24px;
+}
+/* Interactive Console Styles */
+.console-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-output {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+}
+
+.term-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.term-line.stdout {
+  color: #e5e7eb;
+}
+.term-line.stderr {
+  color: #ef4444;
+}
+.term-line.stdin {
+  color: #60a5fa;
+  font-weight: bold;
+}
+.term-line.system-error {
+  color: #f87171;
+  font-style: italic;
+}
+
+.input-line {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.prompt-char {
+  color: #10b981;
+  margin-right: 8px;
+  user-select: none;
+  font-weight: bold;
+}
+
+.terminal-input {
+  background: transparent;
+  border: none;
+  color: #e5e7eb;
+  font-family: inherit;
+  font-size: inherit;
+  flex: 1;
+  outline: none;
+  padding: 0;
+}
+
+.process-status {
+  margin-top: 12px;
+  color: #6b7280;
+  font-style: italic;
+  font-size: 0.8rem;
 }
 </style>

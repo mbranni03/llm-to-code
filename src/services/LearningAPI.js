@@ -125,7 +125,7 @@ async function apiRequest(endpoint, options = {}) {
  * @param {string} userId
  * @param {string} [currentConceptId] - Current concept ID (e.g., "rust.basics.functions")
  * @param {string} [language='rust'] - Language to get lessons for (required by backend)
- * @returns {Promise<{ lesson: GeneratedLesson, cached: boolean }>}
+ * @returns {Promise<{ lesson: GeneratedLesson, lastCode?: string, cached: boolean }>}
  */
 export async function getNextLesson(userId, currentConceptId, language = 'rust') {
   return apiRequest('/lesson/next', {
@@ -187,7 +187,7 @@ export async function getLessonsByLanguage(language, userId) {
  * Get a lesson by its lesson ID
  * @param {string} lessonId - Lesson ID (e.g., "004_rust.basics.functions")
  * @param {string} [userId] - Optional user ID for completion status
- * @returns {Promise<{ lesson: GeneratedLesson, cached: boolean }>}
+ * @returns {Promise<{ lesson: GeneratedLesson, lastCode?: string, cached: boolean }>}
  */
 export async function getLessonById(lessonId, userId) {
   const params = userId ? `?userId=${encodeURIComponent(userId)}` : ''
@@ -196,7 +196,7 @@ export async function getLessonById(lessonId, userId) {
 
 /**
  * Submit code for comprehensive evaluation
- * @param {{ userId: string, conceptId: string, code: string, timeSpent: number }} request
+ * @param {{ userId: string, conceptId: string, code: string, timeSpent: number, compiledResult?: { terminal: Array<{type: string, data: string}>, exitCode: number } }} request
  * @typedef {Object} SubmitResponse
  * @property {boolean} passed
  * @property {Object} analysis
