@@ -7,3 +7,49 @@
 .ͼo .cm-gutters {
   background-color: #111;
 }
+
+/* Glassmorphism Utilities */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+}
+
+.glass-subtle {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(5px);
+}
+
+/* Level Bars */
+.level-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 24px;
+}
+
+.level-bars .bar {
+  width: 6px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+.level-bars .bar.active {
+  background-color: #3b82f6;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
+}
+
+.level-bars .bar:nth-child(1) {
+  height: 33%;
+}
+.level-bars .bar:nth-child(2) {
+  height: 50%;
+}
+.level-bars .bar:nth-child(3) {
+  height: 66%;
+}
+.level-bars .bar:nth-child(4) {
+  height: 100%;
+}

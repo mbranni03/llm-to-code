@@ -281,6 +281,38 @@ export const useLessonStore = defineStore('lesson', {
     },
 
     /**
+     * Resume course for a specific language
+     * - Loads lessons for the language
+     * - Navigates to the latest lesson (or intro)
+     * @param {string} languageId
+     * @param {Object} router - Vue Router instance
+     */
+    async resumeCourse(languageId, router) {
+      if (!languageId || !router) return
+
+      try {
+        // Ensure we load lessons for the selected language
+        // This ensures we can find the latest one to navigate to
+        if (this.currentLanguage !== languageId || this.generatedLessons.length === 0) {
+          await this.loadLessonsForLanguage(languageId)
+        }
+
+        const lessons = this.generatedLessons
+        if (lessons && lessons.length > 0) {
+          // Navigate to the latest (last) lesson
+          const latestLesson = lessons[lessons.length - 1]
+          router.push({ name: 'learn', params: { lessonId: latestLesson.lessonId } })
+        } else {
+          // Fallback if no lessons found
+          router.push('/learn')
+        }
+      } catch (e) {
+        console.error('Failed to resume course:', e)
+        router.push('/learn')
+      }
+    },
+
+    /**
      * Add a lesson to the generated lessons list if not already present
      * Preserves completed status when updating existing lessons
      * @param {Object} lessonData - The generated lesson data

@@ -98,16 +98,17 @@
 </template>
 
 <script>
-import { defineComponent, toRefs, computed } from 'vue'
+import { defineComponent, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useLessonStore } from 'stores/store'
+import { storeToRefs } from 'pinia'
 
 export default defineComponent({
   name: 'IndexPage',
   setup() {
     const router = useRouter()
     const store = useLessonStore()
-    const { userProfile, overallLevel, formattedTotalTime, lessons } = toRefs(store)
+    const { userProfile, overallLevel, formattedTotalTime, lessons } = storeToRefs(store)
 
     const completedLessonsCount = computed(() => {
       return (lessons.value || []).filter((l) => l.isCompleted).length
@@ -115,27 +116,7 @@ export default defineComponent({
 
     const selectLanguage = async (lang) => {
       if (lang.disabled) return
-
-      try {
-        // Ensure we load lessons for the selected language
-        // This ensures we can find the latest one to navigate to
-        if (store.currentLanguage !== lang.id || store.generatedLessons.length === 0) {
-          await store.loadLessonsForLanguage(lang.id)
-        }
-
-        const lessons = store.generatedLessons
-        if (lessons && lessons.length > 0) {
-          // Navigate to the latest (last) lesson
-          const latestLesson = lessons[lessons.length - 1]
-          router.push({ name: 'learn', params: { lessonId: latestLesson.lessonId } })
-        } else {
-          // Fallback if no lessons found
-          router.push('/learn')
-        }
-      } catch (e) {
-        console.error('Failed to navigate to latest lesson:', e)
-        router.push('/learn')
-      }
+      await store.resumeCourse(lang.id, router)
     }
 
     return {
@@ -159,54 +140,15 @@ export default defineComponent({
 }
 
 /* Glassmorphism Utilities */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
-}
-
-.glass-subtle {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(5px);
-}
+/* Now in global css */
 
 .metric-card {
   min-width: 140px;
   transition: transform 0.2s ease;
 }
 
-.level-bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  height: 24px;
-}
-
-.level-bars .bar {
-  width: 6px;
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  transition: all 0.3s ease;
-}
-
-.level-bars .bar:nth-child(1) {
-  height: 8px;
-}
-.level-bars .bar:nth-child(2) {
-  height: 13px;
-}
-.level-bars .bar:nth-child(3) {
-  height: 18px;
-}
-.level-bars .bar:nth-child(4) {
-  height: 24px;
-}
-
-.level-bars .bar.active {
-  background-color: #3b82f6;
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
-}
+/* Level Bars */
+/* Now in global css */
 
 .metric-card:hover {
   transform: translateY(-2px);

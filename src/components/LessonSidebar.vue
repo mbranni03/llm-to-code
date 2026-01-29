@@ -366,7 +366,7 @@ export default defineComponent({
 
 /* Knowledge Graph Button */
 .graph-button-container {
-  padding: 0 16px 16px;
+  padding: 16px;
   border-bottom: 1px solid #1f1f23;
 }
 

@@ -211,37 +211,7 @@ export default defineComponent({
   gap: 10px;
 }
 
-.level-bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 16px;
-}
-
-.level-bars .bar {
-  width: 4px;
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 1px;
-  transition: all 0.3s ease;
-}
-
-.level-bars .bar:nth-child(1) {
-  height: 6px;
-}
-.level-bars .bar:nth-child(2) {
-  height: 9px;
-}
-.level-bars .bar:nth-child(3) {
-  height: 12px;
-}
-.level-bars .bar:nth-child(4) {
-  height: 16px;
-}
-
-.level-bars .bar.active {
-  background-color: #3b82f6;
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
-}
+/* Level bars styles moved to global CSS */
 
 .divider-v {
   width: 1px;
