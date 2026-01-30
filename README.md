@@ -1,6 +1,6 @@
 <p align="center">
     <picture>
-      <img src="public/wide-logo.png" alt="CodingSpace logo" width="400">
+      <img src="public/wide-logo.png" alt="CodingSpace logo" width="200">
     </picture>
 </p>
 <p align="center">Just another AI coding agent.</p>
