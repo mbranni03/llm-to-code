@@ -3,26 +3,34 @@
       <img src="public/wide-logo.png" alt="CodingSpace logo" width="200">
     </picture>
 </p>
-<p align="center">Just another AI coding agent.</p>
+<p align="center">An LLM Powered Coding Teacher</p>
 
-# CodingSpace
+---
+
+<p align="center">
+    <picture>
+      <img src="public/example.png" alt="CodingSpace screenshot" width="600">
+    </picture>
+</p>
+
+## What is CodingSpace?
 
 > The AI-Powered Path to Mastering Modern Development
 
 CodingSpace is an advanced, interactive learning platform designed to bridge the gap between theoretical knowledge and practical execution. Leveraging the power of LLMs, it provides a personalized, hands-on coding experience that adapts to your pace.
-
-## Why CodingSpace?
 
 Traditional tutorials often leave students in the "tutorial hell" — where they can follow instructions but struggle to build independently. **CodingSpace** solves this by:
 
 - **Active Engagement**: No passive reading. Every concept is reinforced with live code execution.
 - **Adaptive Support**: The AI doesn't just give answers; it provides _hints_ and _conceptual explanations_ tailored to your specific mistake.
 - **Visual Learning**: See the architecture behind the code with auto-generated diagrams.
+- **Endless Mode**: Lessons are generated on the fly based on your current knowledge level. The LLM agent will always try to teach you something new!
 
 ---
 
 ## Features
 
+- **Multiple Language Support**: Supports guided teaching of Python, JavaScript, TypeScript, and Rust.
 - **AI-Integrated Tutoring**: A persistent AI assistant that understands your code and provides contextual guidance without giving away the answers.
 - **Full-Featured Interactive Sandbox**: Execute Python, JavaScript, and Rust directly in your browser with a robust, terminal-like feedback loop.
 - **Dynamic Knowledge Visualization**: Track your progress and visualize complex architectures using interactive Mermaid diagrams.
