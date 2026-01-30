@@ -7,17 +7,17 @@
 
 ---
 
-<p align="center">
-    <picture>
-      <img src="public/example.png" alt="CodingSpace screenshot" width="600">
-    </picture>
-</p>
-
 ## What is CodingSpace?
 
 > The AI-Powered Path to Mastering Modern Development
 
 CodingSpace is an advanced, interactive learning platform designed to bridge the gap between theoretical knowledge and practical execution. Leveraging the power of LLMs, it provides a personalized, hands-on coding experience that adapts to your pace.
+
+<p align="center">
+    <picture>
+      <img src="public/example.png" alt="CodingSpace screenshot">
+    </picture>
+</p>
 
 Traditional tutorials often leave students in the "tutorial hell" — where they can follow instructions but struggle to build independently. **CodingSpace** solves this by:
 
