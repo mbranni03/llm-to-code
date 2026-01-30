@@ -8,7 +8,7 @@
           <div class="logo-icon-wrapper">
             <span class="material-icons logo-icon">code</span>
           </div>
-          <h1 class="logo-text">Learned<span class="highlight">.</span></h1>
+          <h1 class="logo-text">CodingSpace<span class="highlight">.</span></h1>
         </router-link>
         <div class="spacer"></div>
         <nav class="nav-actions">
@@ -129,7 +129,7 @@ export default defineComponent({
 .logo-icon-wrapper {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  background: linear-gradient(135deg, #3b82f6, #000000);
   border-radius: 10px;
   display: flex;
   align-items: center;

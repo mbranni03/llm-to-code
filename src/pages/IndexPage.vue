@@ -71,6 +71,12 @@
                     </div>
                   </div>
                   <div class="row items-center">
+                    <q-icon name="check_circle" size="12px" color="grey-6" class="q-mr-xs" />
+                    <div class="text-caption text-grey-6">
+                      {{ progress.languages[lang.id].mastered || 0 }} Lessons
+                    </div>
+                  </div>
+                  <div class="row items-center">
                     <q-icon name="schedule" size="12px" color="grey-6" class="q-mr-xs" />
                     <div class="text-caption text-grey-6">
                       {{ formatTime(progress.languages[lang.id].totalTime) }}
